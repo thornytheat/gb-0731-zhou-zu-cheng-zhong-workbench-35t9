@@ -13,8 +13,10 @@ def view(request, stage, sample, run_id):
     roles = None if stage == "reconcile" else {"triggers", "certificates", "passes"}
     if stage == "intake":
         roles = {"triggers"}
+    # 偏载采信口径依赖疑漂判定，预览时继续跑到 drift 再取 balance。
+    target = "drift" if stage == "balance" else stage
     sources = read_sources(request.app.state.settings.source_dir, sample, roles)
-    results = run_pipeline(sources, until=stage)
+    results = run_pipeline(sources, until=target)
     return {"run_id": None, "sample": sample, "data": results[stage]}
 
 
@@ -41,6 +43,11 @@ def axles(request: Request, sample: str = "dirty", run_id: str | None = None):
 @router.get("/balance", tags=["偏载判级"])
 def balance(request: Request, sample: str = "dirty", run_id: str | None = None):
     return view(request, "balance", sample, run_id)
+
+
+@router.get("/drift", tags=["疑漂判定"])
+def drift(request: Request, sample: str = "dirty", run_id: str | None = None):
+    return view(request, "drift", sample, run_id)
 
 
 @router.get("/reconcile", tags=["整车磅单勾稽"])

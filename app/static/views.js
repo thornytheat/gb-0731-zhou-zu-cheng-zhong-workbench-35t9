@@ -24,8 +24,13 @@ export function dateTime(value) {
 const col = (label, read, numeric = false) => ({label, read, numeric});
 const source = (obj) => obj.source.ref;
 const joined = (list) => list?.join(" / ");
-const labels = {pass: "正常", warn: "偏载", severe: "严重", matched: "已核平", review: "待复秤"};
-const styles = {pass: "ok", warn: "warn", severe: "bad", matched: "ok", review: "warn"};
+const labels = {
+  pass: "正常", warn: "偏载", severe: "严重", matched: "已核平", review: "待复秤",
+  trusted: "采信", held: "暂停采信",
+};
+const styles = {
+  pass: "ok", warn: "warn", severe: "bad", matched: "ok", review: "warn", trusted: "ok", held: "warn",
+};
 const displayStatus = (level) => ({text: labels[level], level: styles[level]});
 
 const issueColumns = [
@@ -78,17 +83,32 @@ export function moduleViews(name, snapshot, history) {
         col("轴号", (r) => r.id), col("判级", (r) => displayStatus(r.level)),
         col("左轮 kg", (r) => r.left_kg, true), col("右轮 kg", (r) => r.right_kg, true),
         col("偏载率 %", (r) => r.percent, true), col("重侧", (r) => ({L: "左", R: "右"})[r.heavy]),
+        col("采信", (r) => displayStatus(r.trusted ? "trusted" : "held")),
         col("左轮证据", (r) => r.left_ref), col("右轮证据", (r) => r.right_ref),
+      ]],
+    ]};
+    case "drift": return {summary: stage ? `${stage.counts.suspect_lanes} 处疑漂轮道 · 暂停 ${stage.counts.suspended_groups} 轴组 / ${stage.counts.suspended_axes} 轴` : "", views: [
+      ["疑漂范围", stage?.suspects, [
+        col("车次", (r) => r.pass_id), col("疑漂轮道", (r) => r.lane),
+        col("连续车轴", (r) => joined(r.axis_ids)), col("暂停轴组", (r) => joined(r.groups)),
+        col("判级序列", (r) => joined(r.levels)), col("偏载率 %", (r) => joined(r.percents), true),
+        col("疑漂轮证据", (r) => joined(r.drift_refs)), col("对侧对照证据", (r) => joined(r.opposite_refs)),
+        col("判定依据", (r) => r.basis),
+      ]],
+      ["轴组采信", stage?.streams, [
+        col("车次", (r) => r.pass_id), col("仍可采信轴组", (r) => joined(r.trusted_groups)),
+        col("暂停采信轴组", (r) => joined(r.suspended_groups)),
       ]],
     ]};
     case "reconcile": return {summary: stage ? `${stage.ledger.matched} 核平 · ${stage.ledger.review} 待复秤` : "", views: [
       ["勾稽结果", stage?.rows, [
         col("车次", (r) => r.pass_id), col("车牌", (r) => r.plate), col("状态", (r) => displayStatus(r.status)),
         col("磅单", (r) => r.ticket?.id), col("版次", (r) => r.ticket?.revision, true),
-        col("静态总重 kg", (r) => r.ticket?.kg, true), col("有效轮载 kg", (r) => r.wheel_kg, true),
+        col("静态总重 kg", (r) => r.ticket?.kg, true),
+        col("采信轮载 kg", (r) => r.wheel_kg, true), col("暂扣轮载 kg", (r) => r.held_kg, true),
         col("差额 kg", (r) => r.difference_kg, true), col("原因码", (r) => joined(r.codes)),
         col("磅单证据", (r) => joined(r.ticket_refs)), col("轮载证据", (r) => joined(r.wheel_refs)),
-        col("复秤证据", (r) => joined(r.review_refs)),
+        col("疑漂证据", (r) => joined(r.drift_refs)), col("复秤证据", (r) => joined(r.review_refs)),
       ]], ["磅单隔离", stage?.ticket_issues, issueColumns], ["触发隔离汇总", data?.quarantine, issueColumns],
     ]};
     case "batches": return {summary: `${history.length} 条归档`, views: [
@@ -182,7 +202,7 @@ export function renderChart(data, passId) {
   const grades = new Map(data.balance.rows.map((row) => [row.id, row]));
   for (const axis of axes) {
     const grade = grades.get(axis.id);
-    const state = displayStatus(grade.level);
+    const state = displayStatus(grade.trusted ? grade.level : "held");
     const row = element("div", "", "load-row");
     row.append(element("span", axis.id.split("/").at(-1), "axis-tag"), track("left", axis.left.kg, maximum),
       element("i", "", "load-axis-line"), track("right", axis.right.kg, maximum),

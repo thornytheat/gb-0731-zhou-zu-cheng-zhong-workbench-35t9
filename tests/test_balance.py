@@ -34,8 +34,12 @@ def test_clean_equal_wheels_have_no_heavy_side(clean_result):
 
 def test_quarantined_wheels_never_participate_in_grading(dirty_result):
     stage = dirty_result["balance"]
-    assert stage["counts"] == {"pass": 9, "warn": 1, "severe": 1}
     assert {row["id"] for row in stage["rows"]} == {axis["id"] for axis in dirty_result["axles"]["axes"]}
+    # 疑漂两轴仍保留 warn/severe 判级作为证据，但不再计入采信口径。
+    assert {row["id"] for row in stage["rows"] if not row["trusted"]} == {"0007/A02", "0007/A03"}
+    assert stage["counts"] == {"pass": 9, "warn": 0, "severe": 0}
+    assert [row["level"] for row in stage["rows"] if not row["trusted"]] == ["warn", "severe"]
+    assert all(row["trusted"] for row in stage["rows"] if row["id"] not in {"0007/A02", "0007/A03"})
 
 
 def test_no_axes_produces_zero_grade_counts():

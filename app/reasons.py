@@ -34,6 +34,8 @@ REASONS = {
     "TICKET_TIME": "磅单超出允许时间窗",
     "WHEELS_INCOMPLETE": "轮载证据待复秤",
     "WEIGHT_DIFFERENCE": "整车差额超限",
+    "DRIFT_SUSPECT": "同轮道连续偏重判疑漂",
+    "DRIFT_SUSPENDED": "疑漂轴组轮载暂停采信",
     "RUN_UNKNOWN": "批次不存在",
     "SOURCE_CHANGED": "源文件或规则已变更",
     "REPLAY_MISMATCH": "重算结果与归档不一致",

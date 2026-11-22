@@ -29,7 +29,8 @@ def test_full_flow_from_unarchived_preview_to_standalone_export(client, settings
     assert response.status_code == 201
     manifest = response.json()["manifest"]
     run_id = manifest["run_id"]
-    assert manifest["ledger"]["wheel_kg"] == "49590.01"
+    assert manifest["ledger"]["wheel_kg"] == "39590.01"
+    assert manifest["ledger"]["held_kg"] == "10000.00"
     assert manifest["files"]["triggers"]["sha256"] == hashlib.sha256(
         (settings.source_dir / "dirty-triggers.csv").read_bytes(),
     ).hexdigest()
@@ -37,13 +38,22 @@ def test_full_flow_from_unarchived_preview_to_standalone_export(client, settings
     assert response.headers["Content-Type"] == "application/zip"
     assert response.headers["Content-Disposition"] == f'attachment; filename="axle-{run_id[:12]}.zip"'
     with ZipFile(BytesIO(response.content)) as bundle:
-        assert set(bundle.namelist()) == {"运行清单.json", "触发复核.csv", "整车勾稽.csv", "轴组轮载.csv"}
+        assert set(bundle.namelist()) == {
+            "运行清单.json", "触发复核.csv", "疑漂判定.csv", "整车勾稽.csv", "轴组轮载.csv",
+        }
         assert json.loads(bundle.read("运行清单.json")) == manifest
         votes = read_csv(bundle, "整车勾稽.csv", "车次")
-        assert votes["0007"]["差额kg"] == "50.00"
+        assert votes["0007"]["差额kg"] == "10050.00"
+        assert votes["0007"]["状态"] == "待复秤"
+        assert votes["0007"]["暂扣轮载kg"] == "10000.00"
         assert votes["0023"]["状态"] == "待复秤"
+        drift = read_csv(bundle, "疑漂判定.csv", "车次")
+        assert drift["0007"]["疑漂轮道"] == "左"
+        assert drift["0007"]["暂停轴组"] == "0007/G01"
         axes = read_csv(bundle, "轴组轮载.csv", "轴号")
         assert axes["0007/A03"]["偏载率%"] == "20.00"
+        assert axes["0007/A03"]["采信状态"] == "暂停采信"
+        assert axes["0007/A04"]["采信状态"] == "采信"
         issues = list(csv.DictReader(StringIO(bundle.read("触发复核.csv").decode("utf-8-sig"))))
         row = next(item for item in issues if item["原因码"] == "CAL_OVERLAP")
         assert (row["起始行"], row["关联证据"]) == ("23", "certificates.csv:4 / certificates.csv:5")
@@ -145,7 +155,8 @@ def test_archive_survives_app_restart_and_supports_export_without_sources(client
 def test_independent_module_entrypoints_return_sample_evidence(client):
     expected = {
         "intake": ("raw", 50), "calibration": ("certificates", 4), "debounce": ("duplicates", 3),
-        "axles": ("groups", 8), "balance": ("rows", 11), "reconcile": ("rows", 7),
+        "axles": ("groups", 8), "balance": ("rows", 11), "drift": ("suspects", 1),
+        "reconcile": ("rows", 7),
     }
     for stage, (key, count) in expected.items():
         response = client.get(f"/api/{stage}?sample=dirty")
@@ -157,7 +168,11 @@ def test_independent_module_entrypoints_return_sample_evidence(client):
 
 def test_early_stages_do_not_require_unused_sources(client, settings):
     (settings.source_dir / "dirty-tickets.csv").unlink()
-    assert client.get("/api/balance").json()["data"]["counts"]["severe"] == 1
+    # 疑漂两轴仍保留 severe 判级行，但采信口径不再计入。
+    balance = client.get("/api/balance").json()["data"]
+    assert balance["counts"]["severe"] == 0
+    assert {row["id"] for row in balance["rows"] if not row["trusted"]} == {"0007/A02", "0007/A03"}
+    assert client.get("/api/drift").json()["data"]["counts"]["suspect_lanes"] == 1
     assert client.get("/api/reconcile").json()["error"]["file"] == "dirty-tickets.csv"
     (settings.source_dir / "certificates.csv").unlink()
     assert client.get("/api/intake").json()["data"]["raw"] == 50

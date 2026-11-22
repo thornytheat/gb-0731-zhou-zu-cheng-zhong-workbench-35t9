@@ -4,7 +4,7 @@ from decimal import Decimal
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-RULE_VERSION = "axle-1.0.0"
+RULE_VERSION = "axle-1.1.0"
 MAX_FILE_BYTES = 1024 * 1024
 MAX_ROWS = 4000
 CENT = Decimal("0.01")
@@ -18,6 +18,8 @@ NOTICE_RATIO = Decimal("0.10")
 SEVERE_RATIO = Decimal("0.20")
 TICKET_TOLERANCE = Decimal("50.00")
 TICKET_GRACE_MIN = 15
+# 同车次同轮道连续偏重达到该轴数才判疑漂；单轴偏重保留为偏载证据，不疑漂。
+DRIFT_MIN_RUN = 2
 
 RULE_PARAMETERS = {
     "debounce_ms": DEBOUNCE_MS,
@@ -29,6 +31,7 @@ RULE_PARAMETERS = {
     "weight_resolution_kg": str(CENT),
     "notice_ratio": str(NOTICE_RATIO),
     "severe_ratio": str(SEVERE_RATIO),
+    "drift_min_run": DRIFT_MIN_RUN,
     "ticket_tolerance_kg": str(TICKET_TOLERANCE),
     "ticket_grace_min": TICKET_GRACE_MIN,
 }

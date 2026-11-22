@@ -40,10 +40,11 @@ def ticket_rows(results):
         ticket = row["ticket"]
         yield (safe_cell(row["pass_id"]), safe_cell(row["plate"]), safe_cell(ticket["id"]) if ticket else "",
                ticket["revision"] if ticket else "", ticket["kg"] if ticket else "",
-               row["wheel_kg"], row["difference_kg"], "勾稽通过" if row["status"] == "matched" else "待复秤",
+               row["wheel_kg"], row["held_kg"], row["difference_kg"],
+               "勾稽通过" if row["status"] == "matched" else "待复秤",
                " / ".join(row["codes"]), " / ".join(REASONS[code] for code in row["codes"]),
                row["pass_ref"], " / ".join(row["ticket_refs"]), " / ".join(row["wheel_refs"]),
-               " / ".join(row["review_refs"]))
+               " / ".join(row["drift_refs"]), " / ".join(row["review_refs"]))
 
 
 def axle_rows(results):
@@ -54,7 +55,18 @@ def axle_rows(results):
         level = {"pass": "正常", "warn": "偏载", "severe": "严重"}[grade["level"]]
         yield (safe_cell(axis["id"]), safe_cell(axis["group"]), axis["time"], axis["gap_m"], axis["skew_ms"],
                left["kg"], right["kg"], axis["total_kg"], grade["percent"], level,
-               left["trigger"]["source"]["ref"], right["trigger"]["source"]["ref"], left["cert_ref"], right["cert_ref"])
+               "采信" if grade["trusted"] else "暂停采信",
+               left["trigger"]["source"]["ref"], right["trigger"]["source"]["ref"],
+               left["cert_ref"], right["cert_ref"])
+
+
+def drift_rows(results):
+    for suspect in results["drift"]["suspects"]:
+        yield (safe_cell(suspect["pass_id"]), suspect["lane"], " / ".join(suspect["axis_ids"]),
+               " / ".join(suspect["groups"]), " / ".join(suspect["levels"]),
+               " / ".join(str(value) for value in suspect["percents"]),
+               " / ".join(suspect["drift_refs"]), " / ".join(suspect["opposite_refs"]),
+               suspect["basis"])
 
 
 def export_bundle(manifest, results):
@@ -64,13 +76,17 @@ def export_bundle(manifest, results):
             ("类别", "车次", "原因码", "说明", "文件", "起始行", "结束行", "关联证据", "保留记录", "原始字段"),
             issue_rows(results),
         ),
+        "疑漂判定.csv": csv_bytes(
+            ("车次", "疑漂轮道", "连续车轴", "暂停轴组", "判级序列", "偏载率%",
+             "疑漂轮证据", "对侧对照证据", "判定依据"), drift_rows(results),
+        ),
         "整车勾稽.csv": csv_bytes(
-            ("车次", "车牌", "磅单号", "版次", "静态总重kg", "有效轮载kg", "差额kg", "状态", "原因码", "说明",
-             "车次档案", "磅单证据", "轮载证据", "复秤证据"), ticket_rows(results),
+            ("车次", "车牌", "磅单号", "版次", "静态总重kg", "采信轮载kg", "暂扣轮载kg", "差额kg", "状态",
+             "原因码", "说明", "车次档案", "磅单证据", "轮载证据", "疑漂证据", "复秤证据"), ticket_rows(results),
         ),
         "轴组轮载.csv": csv_bytes(
             ("轴号", "轴组", "轴时刻UTC", "轴距m", "右减左ms", "左kg", "右kg", "轴重kg", "偏载率%", "判级",
-             "左轮证据", "右轮证据", "左标定证书", "右标定证书"), axle_rows(results),
+             "采信状态", "左轮证据", "右轮证据", "左标定证书", "右标定证书"), axle_rows(results),
         ),
     }
     output = BytesIO()

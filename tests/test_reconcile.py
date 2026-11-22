@@ -19,20 +19,45 @@ def test_ledger_partitions_source_lines_without_overlap(dirty_result):
 
 # TRAP-10
 def test_decimal_rollup_matches_independently_summed_axles(dirty_result):
-    expected = sum(Decimal(axis["total_kg"]) for axis in dirty_result["axles"]["axes"])
-    actual = dirty_result["reconcile"]["ledger"]["wheel_kg"]
-    assert Decimal(actual) == expected == Decimal("49590.01")
+    trusted = [
+        axis for axis in dirty_result["axles"]["axes"]
+        if axis["id"] not in set(dirty_result["drift"]["suspended_axis_ids"])
+    ]
+    expected = sum(Decimal(axis["total_kg"]) for axis in trusted)
+    ledger = dirty_result["reconcile"]["ledger"]
+    assert Decimal(ledger["wheel_kg"]) == expected == Decimal("39590.01")
+    held = [
+        axis for axis in dirty_result["axles"]["axes"]
+        if axis["id"] in set(dirty_result["drift"]["suspended_axis_ids"])
+    ]
+    assert Decimal(ledger["held_kg"]) == sum(Decimal(axis["total_kg"]) for axis in held) == Decimal("10000.00")
+    assert Decimal(ledger["wheel_kg"]) + Decimal(ledger["held_kg"]) == Decimal("49590.01")
 
 
 # TRAP-08
 def test_latest_semantic_duplicate_and_inclusive_tolerance(dirty_result):
     row = row_for(dirty_result, "0007")
+    # G01 疑漂暂停采信后，0007 只剩 A01、A04 的采信轮载，差额按新口径重算。
     assert (row["pass_id"], row["ticket"]["revision"], row["ticket"]["kg"], row["wheel_kg"]) == (
-        "0007", 2, "20050.01", "20000.01",
+        "0007", 2, "20050.01", "10000.01",
     )
-    assert (row["difference_kg"], row["status"], row["ticket_refs"]) == (
-        "50.00", "matched", ["dirty-tickets.csv:2", "dirty-tickets.csv:4"],
-    )
+    assert row["held_kg"] == "10000.00"
+    assert row["suspended_axle_ids"] == ["0007/A02", "0007/A03"]
+    assert row["difference_kg"] == "10050.00"
+    assert row["status"] == "review"
+    assert row["codes"] == ["DRIFT_SUSPENDED", "WEIGHT_DIFFERENCE"]
+    assert row["ticket_refs"] == ["dirty-tickets.csv:2", "dirty-tickets.csv:4"]
+    assert row["drift_refs"] == ["dirty-triggers.csv:2", "dirty-triggers.csv:7",
+                                 "dirty-triggers.csv:14", "dirty-triggers.csv:15"]
+    assert row["wheel_refs"] == ["dirty-triggers.csv:3–4", "dirty-triggers.csv:5",
+                                 "dirty-triggers.csv:10", "dirty-triggers.csv:11"]
+
+
+def test_prior_balanced_receipt_cannot_clear_drift_suspension(dirty_result):
+    # 旧的 50 kg 核平结论建立在疑漂轮载之上，采信变化后不得反证轮道正常。
+    row = row_for(dirty_result, "0007")
+    assert "DRIFT_SUSPENDED" in row["codes"]
+    assert row["status"] == "review"
 
 
 def test_latest_conflicting_revision_never_falls_back(dirty_result):

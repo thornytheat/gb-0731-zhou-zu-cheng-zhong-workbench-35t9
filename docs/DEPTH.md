@@ -12,6 +12,7 @@
 | M3 脉冲去抖 | 核对重送、回弹和冲突记录号 | `GET /api/debounce` | `app/modules/m3_debounce/identity.py` `app/modules/m3_debounce/service.py` | `tests/test_debounce.py` |
 | M4 轴组重建 | 选择车次查看轮载、轴距与隔离证据 | `GET /api/axles` | `app/modules/m4_axles/pair.py` `app/modules/m4_axles/spacing.py` | `tests/test_axles.py` |
 | M5 偏载判级 | 核查左重、右重和临界偏载 | `GET /api/balance` | `app/modules/m5_balance/thresholds.py` `app/modules/m5_balance/service.py` | `tests/test_balance.py` |
+| M8 疑漂判定 | 划定疑漂轮道范围和轴组采信 | `GET /api/drift` | `app/modules/m8_drift/detection.py` `app/modules/m8_drift/service.py` | `tests/test_drift.py` |
 | M6 整车磅单勾稽 | 审核磅单版次、差额和待复秤原因 | `GET /api/reconcile` | `app/modules/m6_reconcile/tickets.py` `app/modules/m6_reconcile/service.py` | `tests/test_reconcile.py` |
 | M7 称重批次 | 提交样例、重算、追溯并下载复核包 | `POST /api/batches` | `app/modules/m7_batches/service.py` `app/modules/m7_batches/export.py` `app/store.py` | `tests/test_batches.py` |
 
@@ -36,11 +37,13 @@
 | TRAP-19 | 0019 两个左轮争同一右轮 | 贪心配对凭空造轴 | 双向唯一才配对 | `app/modules/m4_axles/pair.py` | `tests/test_axles.py::test_nearest_pair_would_invent_axle_when_candidates_conflict` |
 | TRAP-23 | 0007 触发恰好在前证书右端 | 一轮发给两版证书 | 生效区间左闭右开 | `app/modules/m2_calibration/service.py` | `tests/test_calibration.py::test_exact_handoff_uses_new_certificate_and_no_double_match` |
 | TRAP-25 | `certificates.csv` 两张右轮证书叠期 | 随机取一张 | 隔离触发并带两张证书行 | `app/modules/m2_calibration/service.py` | `tests/test_calibration.py::test_overlap_isolates_with_both_certificates` |
+| TRAP-26 | 0007 同轮道连续偏重但磅单对得上 | 停用整条轮道或照常判级 | 连续同侧重载达 2 轴才疑漂，只挂覆盖轴组，采信变化后重算偏载与勾稽 | `app/modules/m8_drift/detection.py` `app/modules/m6_reconcile/service.py` | `tests/test_drift.py` |
 
 ## 对账规则
 
 - 原始触发 = 有效触发 + 重复触发 + 隔离触发。空行、重复表头、磅单异常独立计数。
-- 整车差额 = 静态总重 − 确认车轴的左右轮载合计。缺少有效磅单时差额留空。
+- 整车差额 = 静态总重 − 采信车轴的左右轮载合计。疑漂暂停轴组的轮载计入 `held_kg` 暂扣，不进差额；缺少有效磅单时差额留空。
+- 偏载采信计数只统计 `trusted` 车轴，疑漂车轴保留判级行作为证据。
 
 ## 已知不覆盖
 
